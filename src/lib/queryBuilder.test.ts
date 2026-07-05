@@ -17,6 +17,8 @@ import {
   toggleSubFieldAtPath,
   getActiveNestedSelectionAtOffset,
   getCursorContext,
+  isRootFieldInQuery,
+  canToggleInputType,
 } from './queryBuilder'
 
 // ── Test schema ───────────────────────────────────────────────────────────────
@@ -962,5 +964,91 @@ describe('getCursorContext — subscription opKind', () => {
     const offset = subQuery.indexOf('Post')
     const ctx = getCursorContext(subQuery, offset, nestedSchema)
     expect(ctx.operation?.opKind).not.toBe('query')
+  })
+})
+
+// ── Empty selection set fallbacks (issue #24) ─────────────────────────────────
+// parse() rejects { } — all of these exercise the catch-block repair paths.
+
+describe('empty selection set — toggleFieldInQuery', () => {
+  it('inserts a scalar field into an inline empty SS', () => {
+    const q = '{\n  Post(limit: 10) { }\n}'
+    const result = toggleFieldInQuery(q, 'Post', 'title', schema)
+    expect(result).toContain('title')
+    expect(result).not.toContain('__typename')
+  })
+
+  it('inserts a scalar field into a multiline empty SS without blank lines', () => {
+    const q = '{\n  Post(limit: 10) {\n\n  }\n}'
+    const result = toggleFieldInQuery(q, 'Post', 'title', schema)
+    expect(result).toContain('title')
+    expect(result).not.toMatch(/\n\n/)
+  })
+
+  it('inserts a scalar field when filter arg is also present', () => {
+    const q = '{\n  Post(limit: 10, filter: {}) {\n\n  }\n}'
+    const result = toggleFieldInQuery(q, 'Post', 'title', schema)
+    expect(result).toContain('title')
+    expect(result).toContain('filter: {}')
+    expect(result).not.toMatch(/\n\n/)
+  })
+})
+
+describe('empty selection set — toggleArgInQuery', () => {
+  it('adds an arg and preserves the empty SS', () => {
+    const q = '{\n  Post {\n\n  }\n}'
+    const result = toggleArgInQuery(q, 'Post', 'limit', 'Int')
+    expect(result).toContain('limit: 10')
+    expect(result).not.toContain('__typename')
+  })
+
+  it('adds a filter arg and preserves the empty SS', () => {
+    const q = '{\n  Post {\n\n  }\n}'
+    const result = toggleArgInQuery(q, 'Post', 'filter', 'PostFilterArg')
+    expect(result).toContain('filter: {}')
+    expect(result).not.toContain('__typename')
+  })
+})
+
+describe('empty selection set — isRootFieldInQuery', () => {
+  it('returns true when the root field is present but SS is empty', () => {
+    expect(isRootFieldInQuery('{\n  Post {\n\n  }\n}', 'Post')).toBe(true)
+  })
+
+  it('returns false when the root field is absent', () => {
+    expect(isRootFieldInQuery('{\n  Post {\n\n  }\n}', 'Post_by_id')).toBe(false)
+  })
+})
+
+describe('empty selection set — canToggleInputType', () => {
+  it('returns true when a root field in the query accepts the input type', () => {
+    const q = '{\n  Post {\n\n  }\n}'
+    expect(canToggleInputType(q, 'PostFilterArg', schema)).toBe(true)
+  })
+
+  it('returns false when no root field in the query accepts the type', () => {
+    const q = '{\n  Post {\n\n  }\n}'
+    expect(canToggleInputType(q, 'PostMutationInput', schema)).toBe(false)
+  })
+})
+
+describe('empty selection set — ensureArgAndToggleInputField', () => {
+  it('adds the arg and toggles the input field in one shot', () => {
+    const q = '{\n  Post {\n\n  }\n}'
+    const result = ensureArgAndToggleInputField(q, 'PostFilterArg', 'title', 'StringOperatorBlock', schema)
+    expect(result).toContain('filter:')
+    expect(result).toContain('title:')
+    expect(result).not.toContain('__typename')
+  })
+})
+
+describe('empty selection set — getCursorContext fallback', () => {
+  it('detects the root operation when cursor is inside an empty SS', () => {
+    const q = '{\n  Post(limit: 10) {\n\n  }\n}'
+    // position the cursor on the blank line inside the selection set
+    const cursorOffset = q.indexOf('{\n\n') + 2
+    const ctx = getCursorContext(q, cursorOffset, schema)
+    expect(ctx.operation?.operationName).toBe('Post')
+    expect(ctx.operation?.opKind).toBe('query')
   })
 })

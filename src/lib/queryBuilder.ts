@@ -472,40 +472,6 @@ export function toggleFieldInQuery(
           query.slice(ssInfo.end)
       }
 
-      // Root field not yet in query — build a fresh document
-      if (!ssInfo) {
-        const hasLimitArg = !!rootQueryFields[rootFieldName]?.args.find(a => a.name === 'limit')
-        const pt      = schema.getType(typeName)
-        const fd      = isObjectType(pt) ? (pt as GraphQLObjectType).getFields()[fieldName] : null
-        const nt      = fd ? getNamedType(fd.type as GraphQLType) : null
-        const ntType  = nt ? schema.getType(nt.name) : null
-        const initSel = (nt && isObjectType(ntType))
-          ? makeSelectionSet([{
-              kind: Kind.FIELD,
-              name: { kind: Kind.NAME, value: fieldName },
-              selectionSet: makeSelectionSet([makeField('_docID')]),
-            }])
-          : makeSelectionSet([makeField(fieldName)])
-        const newField: FieldNode = {
-          kind: Kind.FIELD,
-          name: { kind: Kind.NAME, value: rootFieldName },
-          arguments: hasLimitArg ? [{
-            kind: Kind.ARGUMENT,
-            name: { kind: Kind.NAME, value: 'limit' },
-            value: { kind: Kind.INT, value: '10' },
-          }] : [],
-          selectionSet: initSel,
-        }
-        const baseDoc = parse('{ __typename }')
-        const newDoc  = visit(baseDoc, {
-          OperationDefinition: {
-            leave(node: OperationDefinitionNode) {
-              return { ...node, selectionSet: { ...node.selectionSet, selections: [newField] } }
-            },
-          },
-        })
-        return print(newDoc)
-      }
     }
 
     return query
