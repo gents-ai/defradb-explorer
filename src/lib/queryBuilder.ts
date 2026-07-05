@@ -230,9 +230,19 @@ function makeSelectionSet(fields: FieldNode[]): SelectionSetNode {
 
 // Extract the indents used inside a selection-set slice (e.g. "{\n    _docID\n  }")
 // Repair empty selection sets so parse() doesn't throw. Uses a negative lookbehind to
-// skip ObjectValue arguments (e.g. filter: {}) and list items (e.g. _and: [{}]).
+// skip ObjectValue arguments (e.g. filter: {}) list items (e.g. _and: [{}]) and
+// comma-separated values (e.g. [{ title: {} }, {}]).
 function patchEmptySelectionSets(query: string): string {
-  return query.replace(/(?<![:\[]\s*)\{\s*\}/g, '{ __typename }')
+  return query.replace(/(?<!(?::|,|\[)\s*)\{\s*\}/g, '{ __typename }')
+}
+
+// Restore each patched '{ __typename }' placeholder back to its original empty SS text,
+// in order. Handles queries that had multiple empty selection sets.
+function restorePatchedSSes(toggled: string, originalQuery: string): string {
+  const origTexts = [...originalQuery.matchAll(/(?<!(?::|,|\[)\s*)\{\s*\}/g)].map(m => m[0])
+  if (origTexts.length === 0) return toggled
+  let i = 0
+  return toggled.replace(/\{ __typename \}/g, () => origTexts[i++] ?? '{ __typename }')
 }
 
 // Find a root field's selection set by scanning text (no parsing needed).
@@ -780,10 +790,7 @@ export function toggleInputObjectFieldAtOffset(
       const patched = patchEmptySelectionSets(query)
       if (patched !== query) {
         const toggled = toggleInputObjectFieldAtOffset(patched, objectStart, fieldName, schema)
-        if (toggled !== patched) {
-          const origSS = query.match(/(?<![:\[]\s*)\{\s*\}/)?.[0]
-          return origSS ? toggled.replace('{ __typename }', origSS) : toggled
-        }
+        if (toggled !== patched) return restorePatchedSSes(toggled, query)
       }
     } catch {}
     return query
@@ -1004,12 +1011,21 @@ export function ensureArgAndToggleInputField(
     return q
   }
 
-  try { return run(query) } catch { /* fall through */ }
+  // run() may return query unchanged without throwing when the query is unparseable (e.g.
+  // empty selection set) — hasInputObjectInQuery has its own fallback so it doesn't throw,
+  // but toggleInputObjectField silently catches the parse error and returns the query as-is.
+  // Check for an actual change so we fall through to the patch+retry path when needed.
+  try {
+    const result = run(query)
+    if (result !== query) return result
+  } catch { /* fall through */ }
   // Query unparseable (empty selection set) — patch, run, then restore original SS
   try {
     const patched  = patchEmptySelectionSets(query)
-    const toggled  = run(patched)
-    if (toggled !== patched) return toggled.replace('{ __typename }', query.match(/(?<![:\[]\s*)\{\s*\}/)?.[0] ?? '{ }')
+    if (patched !== query) {
+      const toggled  = run(patched)
+      if (toggled !== patched) return restorePatchedSSes(toggled, query)
+    }
   } catch {}
   return query
 }
@@ -1334,10 +1350,18 @@ export function getCursorContext(
             while (pos < query.length && /[ \t]/.test(query[pos])) pos++
             if (query[pos] === '(') {
               const argListStart = pos + 1
+              // Find the matching ')' so arg search is bounded to this field's arg list
+              let closeDepth = 1, closePos = argListStart
+              while (closePos < query.length && closeDepth > 0) {
+                if (query[closePos] === '(') closeDepth++
+                else if (query[closePos] === ')') closeDepth--
+                closePos++
+              }
+              const argListSlice = query.slice(argListStart, closePos - 1)
               for (const arg of fieldDef.args) {
                 const namedType = getNamedType(arg.type as GraphQLType)
                 if (!isInputObjectType(namedType)) continue
-                const argMatch = new RegExp(`\\b${arg.name}\\s*:\\s*\\{`).exec(query.slice(argListStart))
+                const argMatch = new RegExp(`\\b${arg.name}\\s*:\\s*\\{`).exec(argListSlice)
                 if (!argMatch) continue
                 const braceStart = argListStart + argMatch.index + argMatch[0].lastIndexOf('{')
                 let d = 1, j = braceStart + 1

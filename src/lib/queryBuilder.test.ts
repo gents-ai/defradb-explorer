@@ -1051,6 +1051,29 @@ describe('empty selection set — toggleInputObjectFieldAtOffset', () => {
     expect(result).toContain('filter: {')
     expect(result).not.toContain('__typename')
   })
+
+  it('toggles into a nested empty ObjectValue (e.g. filter: { title: {} }) when SS is empty', () => {
+    // Mirrors the UI case: sidebar navigated to StringOperatorBlock via cursor inside title: {}
+    // while the query has an empty selection set — objectStart points to title: {}'s brace.
+    const q = '{\n  Post(limit: 10, filter: {\n    title: {}\n  }) {\n\n  }\n}'
+    const objectStart = q.indexOf('title: {') + 'title: '.length
+    const result = toggleInputObjectFieldAtOffset(q, objectStart, '_eq', schema)
+    expect(result).toContain('_eq:')
+    expect(result).toContain('title: {')
+    expect(result).not.toContain('__typename')
+  })
+})
+
+describe('empty selection set — ensureArgAndToggleInputField with nested ObjectValue', () => {
+  it('toggles into a nested ObjectValue type when selection set is empty', () => {
+    // Mirrors: sidebar manually navigated to StringOperatorBlock (objectStart=null),
+    // so ensureArgAndToggleInputField is used instead of toggleInputObjectFieldAtOffset.
+    const q = '{\n  Post(limit: 10, filter: {\n    title: {}\n  }) {\n\n  }\n}'
+    const result = ensureArgAndToggleInputField(q, 'StringOperatorBlock', '_eq', 'String', schema)
+    expect(result).toContain('_eq:')
+    expect(result).toContain('title: {')
+    expect(result).not.toContain('__typename')
+  })
 })
 
 describe('empty selection set — getCursorContext fallback', () => {
