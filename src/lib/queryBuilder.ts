@@ -732,8 +732,8 @@ export function getInputObjectFieldsAtOffset(
   query: string,
   objectStart: number,
 ): Set<string> {
-  try {
-    const doc = parse(query)
+  const check = (q: string) => {
+    const doc = parse(q)
     const found = new Set<string>()
     visit(doc, {
       ObjectValue(node) {
@@ -743,9 +743,9 @@ export function getInputObjectFieldsAtOffset(
       },
     })
     return found
-  } catch {
-    return new Set()
   }
+  try { return check(query) } catch { /* fall through */ }
+  try { return check(patchEmptySelectionSets(query)) } catch { return new Set() }
 }
 
 /** Toggle a field in the specific ObjectValue at objectStart. Derives all defaults from schema. */
@@ -774,6 +774,18 @@ export function toggleInputObjectFieldAtOffset(
 
     return result
   } catch {
+    // ObjectValue args always precede the selection set, so patching the SS
+    // doesn't shift objectStart — safe to retry with the same offset.
+    try {
+      const patched = patchEmptySelectionSets(query)
+      if (patched !== query) {
+        const toggled = toggleInputObjectFieldAtOffset(patched, objectStart, fieldName, schema)
+        if (toggled !== patched) {
+          const origSS = query.match(/(?<![:\[]\s*)\{\s*\}/)?.[0]
+          return origSS ? toggled.replace('{ __typename }', origSS) : toggled
+        }
+      }
+    } catch {}
     return query
   }
 }
@@ -1300,18 +1312,53 @@ export function getCursorContext(
     if (nestedSelection) return { insertObject: null, nestedSelection, operation: null }
     return { insertObject: null, nestedSelection: null, operation }
   } catch {
-    // Query may be unparseable (e.g. empty selection set) — fall back to text scan
-    // to detect which root operation field the cursor is inside.
+    // Query may be unparseable (e.g. empty selection set) — fall back to text scan.
     const rootQueryFields        = schema.getQueryType()?.getFields()        ?? {}
     const rootMutationFields     = schema.getMutationType()?.getFields()     ?? {}
     const rootSubscriptionFields = schema.getSubscriptionType()?.getFields() ?? {}
-    const allRootFields: Array<[Record<string, unknown>, 'query' | 'mutation' | 'subscription']> = [
+    const fieldMaps: Array<[Record<string, unknown>, 'query' | 'mutation' | 'subscription']> = [
       [rootQueryFields,        'query'],
       [rootMutationFields,     'mutation'],
       [rootSubscriptionFields, 'subscription'],
     ]
-    for (const [fields, opKind] of allRootFields) {
+
+    for (const [fields, opKind] of fieldMaps) {
       for (const fieldName of Object.keys(fields)) {
+        const fieldDef = fields[fieldName] as { args?: ReadonlyArray<{ name: string; type: unknown }> }
+
+        // Check for cursor inside an ObjectValue arg (e.g. filter: {}) before checking the SS
+        if (fieldDef?.args?.length) {
+          const fieldMatch = new RegExp(`\\b${fieldName}\\b`).exec(query)
+          if (fieldMatch) {
+            let pos = fieldMatch.index + fieldMatch[0].length
+            while (pos < query.length && /[ \t]/.test(query[pos])) pos++
+            if (query[pos] === '(') {
+              const argListStart = pos + 1
+              for (const arg of fieldDef.args) {
+                const namedType = getNamedType(arg.type as GraphQLType)
+                if (!isInputObjectType(namedType)) continue
+                const argMatch = new RegExp(`\\b${arg.name}\\s*:\\s*\\{`).exec(query.slice(argListStart))
+                if (!argMatch) continue
+                const braceStart = argListStart + argMatch.index + argMatch[0].lastIndexOf('{')
+                let d = 1, j = braceStart + 1
+                while (j < query.length && d > 0) {
+                  if (query[j] === '{') d++
+                  else if (query[j] === '}') d--
+                  j++
+                }
+                if (cursorOffset >= braceStart && cursorOffset <= j) {
+                  return {
+                    insertObject: { typeName: namedType.name, objectStart: braceStart, operationName: fieldName, opKind },
+                    nestedSelection: null,
+                    operation: null,
+                  }
+                }
+              }
+            }
+          }
+        }
+
+        // Check for cursor inside the field's selection set
         const re = new RegExp(`\\b${fieldName}\\s*(?:\\([^)]*\\))?\\s*\\{`, 'g')
         let m: RegExpExecArray | null
         while ((m = re.exec(query)) !== null) {
@@ -1322,8 +1369,7 @@ export function getCursorContext(
             else if (query[i] === '}') depth--
             i++
           }
-          const closeBrace = i - 1
-          if (cursorOffset > openBrace && cursorOffset < closeBrace) {
+          if (cursorOffset > openBrace && cursorOffset < i - 1) {
             return { insertObject: null, nestedSelection: null, operation: { operationName: fieldName, opKind } }
           }
         }

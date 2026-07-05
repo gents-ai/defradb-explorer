@@ -1042,13 +1042,32 @@ describe('empty selection set — ensureArgAndToggleInputField', () => {
   })
 })
 
+describe('empty selection set — toggleInputObjectFieldAtOffset', () => {
+  it('toggles a field into an ObjectValue arg when the query has an empty SS', () => {
+    const q = '{\n  Post(limit: 10, filter: {}) {\n\n  }\n}'
+    const objectStart = q.indexOf('filter: {') + 'filter: '.length
+    const result = toggleInputObjectFieldAtOffset(q, objectStart, 'title', schema)
+    expect(result).toContain('title:')
+    expect(result).toContain('filter: {')
+    expect(result).not.toContain('__typename')
+  })
+})
+
 describe('empty selection set — getCursorContext fallback', () => {
   it('detects the root operation when cursor is inside an empty SS', () => {
     const q = '{\n  Post(limit: 10) {\n\n  }\n}'
-    // position the cursor on the blank line inside the selection set
     const cursorOffset = q.indexOf('{\n\n') + 2
     const ctx = getCursorContext(q, cursorOffset, schema)
     expect(ctx.operation?.operationName).toBe('Post')
     expect(ctx.operation?.opKind).toBe('query')
+  })
+
+  it('detects insertObject when cursor is inside an empty ObjectValue arg', () => {
+    const q = '{\n  Post(limit: 10, filter: {}) {\n\n  }\n}'
+    const braceOffset = q.indexOf('filter: {') + 'filter: '.length
+    const ctx = getCursorContext(q, braceOffset + 1, schema) // inside the {}
+    expect(ctx.insertObject?.typeName).toBe('PostFilterArg')
+    expect(ctx.insertObject?.operationName).toBe('Post')
+    expect(ctx.operation).toBeNull()
   })
 })
