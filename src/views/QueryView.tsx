@@ -46,9 +46,7 @@ interface QueryTab {
   subStatus: SubStatus
 }
 
-const DEFAULT_QUERY = `{
-
-}`
+const DEFAULT_QUERY = ``
 
 const INTROSPECTION_QUERY = `{
   __schema {

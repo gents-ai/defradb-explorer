@@ -149,6 +149,17 @@ export function toggleArgInQuery(
 
     return result
   } catch {
+    // Only the root field's empty selection set causes the parse failure — patch just that
+    const ssInfo = findRootFieldSelectionSet(query, rootFieldName)
+    if (ssInfo && ssInfo.text.slice(1, -1).trim() === '') {
+      const patched = query.slice(0, ssInfo.start) + '{ __typename }' + query.slice(ssInfo.end)
+      try {
+        const toggled = toggleArgInQuery(patched, rootFieldName, argName, argTypeName, isList)
+        if (toggled !== patched) {
+          return toggled.replace('{ __typename }', ssInfo.text)
+        }
+      } catch { /* fall through */ }
+    }
     return query
   }
 }
@@ -218,6 +229,39 @@ function makeSelectionSet(fields: FieldNode[]): SelectionSetNode {
 }
 
 // Extract the indents used inside a selection-set slice (e.g. "{\n    _docID\n  }")
+// Repair empty selection sets so parse() doesn't throw. Uses a negative lookbehind to
+// skip ObjectValue arguments (e.g. filter: {}) and list items (e.g. _and: [{}]).
+function patchEmptySelectionSets(query: string): string {
+  return query.replace(/(?<![:\[]\s*)\{\s*\}/g, '{ __typename }')
+}
+
+// Find a root field's selection set by scanning text (no parsing needed).
+// Skips over arg lists so { } inside filter: {} is not confused for the SS.
+function findRootFieldSelectionSet(
+  query: string,
+  rootFieldName: string,
+): { start: number; end: number; text: string } | null {
+  const m = new RegExp(`\\b${rootFieldName}\\b`).exec(query)
+  if (!m) return null
+  let i = m.index + m[0].length
+  while (i < query.length && /[ \t]/.test(query[i])) i++
+  if (query[i] === '(') {
+    let d = 1; i++
+    while (i < query.length && d > 0) {
+      if (query[i] === '(') d++; else if (query[i] === ')') d--
+      i++
+    }
+  }
+  while (i < query.length && /\s/.test(query[i])) i++
+  if (i >= query.length || query[i] !== '{') return null
+  const start = i; let d = 1; i++
+  while (i < query.length && d > 0) {
+    if (query[i] === '{') d++; else if (query[i] === '}') d--
+    i++
+  }
+  return { start, end: i, text: query.slice(start, i) }
+}
+
 function selectionSetIndents(ssSlice: string): { fieldIndent: string; closeIndent: string } {
   const fieldMatch = ssSlice.match(/\{\n(\s+)/)
   const closeMatch = ssSlice.match(/\n(\s*)\}$/)
@@ -376,11 +420,15 @@ export function toggleFieldInQuery(
               }] : [],
               selectionSet: initSel,
             }
+            // Strip __typename placeholder that parseCached inserts for empty queries
+            const existingSelections = node.selectionSet.selections.filter(
+              s => !(s.kind === Kind.FIELD && (s as FieldNode).name.value === '__typename'),
+            )
             return {
               ...node,
               selectionSet: {
                 ...node.selectionSet,
-                selections: [...node.selectionSet.selections, newField],
+                selections: [...existingSelections, newField],
               },
             }
           },
@@ -391,6 +439,75 @@ export function toggleFieldInQuery(
 
     return query
   } catch {
+    if (!adding) return query
+
+    if (rootFieldName) {
+      const ssInfo = findRootFieldSelectionSet(query, rootFieldName)
+
+      // Root field exists with an empty selection set — insert directly, preserving format
+      if (ssInfo && ssInfo.text.slice(1, -1).trim() === '') {
+        const pt         = schema.getType(typeName)
+        const fd         = isObjectType(pt) ? (pt as GraphQLObjectType).getFields()[fieldName] : null
+        const nt         = fd ? getNamedType(fd.type as GraphQLType) : null
+        const ntType     = nt ? schema.getType(nt.name) : null
+        const isInline   = !ssInfo.text.includes('\n')
+        // Derive close-brace indent from the actual line it sits on in the query
+        const closeLineStart = query.lastIndexOf('\n', ssInfo.end - 2) + 1
+        const closeIndent    = query.slice(closeLineStart, ssInfo.end - 1).match(/^(\s*)/)?.[1] ?? ''
+        const fIndent        = closeIndent + '  '
+        let fieldText: string
+        if (nt && isObjectType(ntType)) {
+          const objType = schema.getType(nt.name) as GraphQLObjectType
+          fieldText = isInline
+            ? `${fieldName} { ${buildDefaultSubSelection(objType, '')} }`
+            : `${fieldName} {\n${buildDefaultSubSelection(objType, fIndent + '  ')}\n${fIndent}}`
+        } else {
+          fieldText = fieldName
+        }
+        if (isInline) {
+          return query.slice(0, ssInfo.start) + `{ ${fieldText} }` + query.slice(ssInfo.end)
+        }
+        return query.slice(0, ssInfo.start) +
+          `{\n${fIndent}${fieldText}\n${closeIndent}}` +
+          query.slice(ssInfo.end)
+      }
+
+      // Root field not yet in query — build a fresh document
+      if (!ssInfo) {
+        const hasLimitArg = !!rootQueryFields[rootFieldName]?.args.find(a => a.name === 'limit')
+        const pt      = schema.getType(typeName)
+        const fd      = isObjectType(pt) ? (pt as GraphQLObjectType).getFields()[fieldName] : null
+        const nt      = fd ? getNamedType(fd.type as GraphQLType) : null
+        const ntType  = nt ? schema.getType(nt.name) : null
+        const initSel = (nt && isObjectType(ntType))
+          ? makeSelectionSet([{
+              kind: Kind.FIELD,
+              name: { kind: Kind.NAME, value: fieldName },
+              selectionSet: makeSelectionSet([makeField('_docID')]),
+            }])
+          : makeSelectionSet([makeField(fieldName)])
+        const newField: FieldNode = {
+          kind: Kind.FIELD,
+          name: { kind: Kind.NAME, value: rootFieldName },
+          arguments: hasLimitArg ? [{
+            kind: Kind.ARGUMENT,
+            name: { kind: Kind.NAME, value: 'limit' },
+            value: { kind: Kind.INT, value: '10' },
+          }] : [],
+          selectionSet: initSel,
+        }
+        const baseDoc = parse('{ __typename }')
+        const newDoc  = visit(baseDoc, {
+          OperationDefinition: {
+            leave(node: OperationDefinitionNode) {
+              return { ...node, selectionSet: { ...node.selectionSet, selections: [newField] } }
+            },
+          },
+        })
+        return print(newDoc)
+      }
+    }
+
     return query
   }
 }
@@ -809,8 +926,8 @@ export function getListItemObjectStarts(
 
 /** True if any ObjectValue of the given input type exists in the query. */
 function hasInputObjectInQuery(query: string, inputTypeName: string, schema: GraphQLSchema): boolean {
-  try {
-    const doc = parse(query)
+  const check = (q: string) => {
+    const doc = parse(q)
     const typeInfo = new TypeInfo(schema)
     let found = false
     visit(doc, visitWithTypeInfo(typeInfo, {
@@ -820,13 +937,15 @@ function hasInputObjectInQuery(query: string, inputTypeName: string, schema: Gra
       },
     }))
     return found
-  } catch { return false }
+  }
+  try { return check(query) } catch { /* fall through */ }
+  try { return check(patchEmptySelectionSets(query)) } catch { return false }
 }
 
 /** Returns true if a root-level field with this name exists anywhere in the query. */
 export function isRootFieldInQuery(query: string, fieldName: string): boolean {
-  try {
-    const doc = parse(query)
+  const check = (q: string) => {
+    const doc = parse(q)
     for (const def of doc.definitions) {
       if (def.kind !== Kind.OPERATION_DEFINITION) continue
       for (const sel of def.selectionSet.selections) {
@@ -834,7 +953,9 @@ export function isRootFieldInQuery(query: string, fieldName: string): boolean {
       }
     }
     return false
-  } catch { return false }
+  }
+  try { return check(query) } catch { /* fall through */ }
+  try { return check(patchEmptySelectionSets(query)) } catch { return false }
 }
 
 /**
@@ -848,8 +969,8 @@ export function canToggleInputType(
   schema: GraphQLSchema,
 ): boolean {
   if (hasInputObjectInQuery(query, inputTypeName, schema)) return true
-  try {
-    const doc = parse(query)
+  const check = (q: string): boolean => {
+    const doc = parse(q)
     const rootQueryFields        = schema.getQueryType()?.getFields()        ?? {}
     const rootMutationFields     = schema.getMutationType()?.getFields()     ?? {}
     const rootSubscriptionFields = schema.getSubscriptionType()?.getFields() ?? {}
@@ -861,7 +982,10 @@ export function canToggleInputType(
         if (rootFieldDef?.args.some(a => getNamedType(a.type).name === inputTypeName)) return true
       }
     }
-  } catch {}
+    return false
+  }
+  try { return check(query) } catch { /* fall through */ }
+  try { return check(patchEmptySelectionSets(query)) } catch {}
   return false
 }
 
@@ -876,17 +1000,15 @@ export function ensureArgAndToggleInputField(
   fieldTypeName: string,
   schema: GraphQLSchema,
 ): string {
-  if (hasInputObjectInQuery(query, inputTypeName, schema)) {
-    return toggleInputObjectField(query, inputTypeName, fieldName, fieldTypeName, schema)
-  }
-
-  // Input type not yet in query — find a root selection that has an arg of this type.
-  try {
-    const doc = parse(query)
+  const run = (q: string): string => {
+    if (hasInputObjectInQuery(q, inputTypeName, schema)) {
+      return toggleInputObjectField(q, inputTypeName, fieldName, fieldTypeName, schema)
+    }
+    // Input type not yet in query — find a root selection that has an arg of this type.
+    const doc = parse(q)
     const rootQueryFields        = schema.getQueryType()?.getFields()        ?? {}
     const rootMutationFields     = schema.getMutationType()?.getFields()     ?? {}
     const rootSubscriptionFields = schema.getSubscriptionType()?.getFields() ?? {}
-
     for (const def of doc.definitions) {
       if (def.kind !== Kind.OPERATION_DEFINITION) continue
       for (const sel of def.selectionSet.selections) {
@@ -894,19 +1016,23 @@ export function ensureArgAndToggleInputField(
         const rootFieldName = sel.name.value
         const rootFieldDef  = rootQueryFields[rootFieldName] ?? rootMutationFields[rootFieldName] ?? rootSubscriptionFields[rootFieldName]
         if (!rootFieldDef) continue
-
         const matchingArg = rootFieldDef.args.find(a => getNamedType(a.type).name === inputTypeName)
         if (!matchingArg) continue
-
         const argIsList = typeIsList(matchingArg.type as GraphQLType)
-
-        // Add the arg scaffold, then add the field inside it
-        const withArg = toggleArgInQuery(query, rootFieldName, matchingArg.name, inputTypeName, argIsList)
+        const withArg = toggleArgInQuery(q, rootFieldName, matchingArg.name, inputTypeName, argIsList)
         return toggleInputObjectField(withArg, inputTypeName, fieldName, fieldTypeName, schema)
       }
     }
-  } catch {}
+    return q
+  }
 
+  try { return run(query) } catch { /* fall through */ }
+  // Query unparseable (empty selection set) — patch, run, then restore original SS
+  try {
+    const patched  = patchEmptySelectionSets(query)
+    const toggled  = run(patched)
+    if (toggled !== patched) return toggled.replace('{ __typename }', query.match(/(?<![:\[]\s*)\{\s*\}/)?.[0] ?? '{ }')
+  } catch {}
   return query
 }
 
@@ -1208,6 +1334,35 @@ export function getCursorContext(
     if (nestedSelection) return { insertObject: null, nestedSelection, operation: null }
     return { insertObject: null, nestedSelection: null, operation }
   } catch {
+    // Query may be unparseable (e.g. empty selection set) — fall back to text scan
+    // to detect which root operation field the cursor is inside.
+    const rootQueryFields        = schema.getQueryType()?.getFields()        ?? {}
+    const rootMutationFields     = schema.getMutationType()?.getFields()     ?? {}
+    const rootSubscriptionFields = schema.getSubscriptionType()?.getFields() ?? {}
+    const allRootFields: Array<[Record<string, unknown>, 'query' | 'mutation' | 'subscription']> = [
+      [rootQueryFields,        'query'],
+      [rootMutationFields,     'mutation'],
+      [rootSubscriptionFields, 'subscription'],
+    ]
+    for (const [fields, opKind] of allRootFields) {
+      for (const fieldName of Object.keys(fields)) {
+        const re = new RegExp(`\\b${fieldName}\\s*(?:\\([^)]*\\))?\\s*\\{`, 'g')
+        let m: RegExpExecArray | null
+        while ((m = re.exec(query)) !== null) {
+          const openBrace = m.index + m[0].lastIndexOf('{')
+          let depth = 1, i = openBrace + 1
+          while (i < query.length && depth > 0) {
+            if (query[i] === '{') depth++
+            else if (query[i] === '}') depth--
+            i++
+          }
+          const closeBrace = i - 1
+          if (cursorOffset > openBrace && cursorOffset < closeBrace) {
+            return { insertObject: null, nestedSelection: null, operation: { operationName: fieldName, opKind } }
+          }
+        }
+      }
+    }
     return empty
   }
 }

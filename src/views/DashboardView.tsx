@@ -35,8 +35,8 @@ export default function DashboardView() {
               <p className={styles.netEmpty}>No active connections</p>
             ) : (
               <div className={styles.peerList}>
-                {peers!.map(p => (
-                  <div key={p.id} className={styles.peerRow}>
+                {peers!.map((p, i) => (
+                  <div key={i} className={styles.peerRow}>
                     <span className={styles.peerDot} />
                     <span className={styles.peerId} title={p.id}>{p.id}</span>
                     <span className={styles.peerAddr}>{p.addr.split('/p2p/')[0]}</span>

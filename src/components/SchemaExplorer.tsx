@@ -295,7 +295,6 @@ function OperationPage({
           <div className={styles.selectAllRow}>
             <button
               className={`${styles.addBtn} ${returnFields.every(f => selected.has(f.name)) ? styles.addBtnOn : ''}`}
-              disabled={!inQuery}
               onClick={() => {
                 const allSelected = returnFields.every(f => selected.has(f.name))
                 const toToggle = allSelected
@@ -319,7 +318,6 @@ function OperationPage({
                 selected={selected.has(f.name)}
                 onToggle={() => onQueryChange(toggleFieldInQuery(query, returnType.name, f.name, schema, field.name))}
                 onNavigateField={() => onNavigateField(returnType.name, f.name)}
-                disabled={!inQuery}
               />
             )
           })}
