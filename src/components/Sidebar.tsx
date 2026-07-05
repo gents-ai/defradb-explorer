@@ -77,7 +77,7 @@ export default function Sidebar({ activeCollection, onSelectCollection, activeTa
           <p className={styles.errorNote}>Could not load collections.</p>
         )}
 
-        {collections?.map(c => (
+        {[...(collections ?? [])].sort((a, b) => a.name.localeCompare(b.name)).map(c => (
           <button
             key={c.name}
             className={`${styles.collectionItem} ${c.name === activeCollection ? styles.collectionActive : ''}`}
@@ -94,7 +94,7 @@ export default function Sidebar({ activeCollection, onSelectCollection, activeTa
         {views && views.length > 0 && (
           <>
             <p className={styles.label} style={{ padding: '12px 8px 4px' }}>Views</p>
-            {views.map(v => (
+            {[...views].sort((a, b) => a.name.localeCompare(b.name)).map(v => (
               <button
                 key={v.name}
                 className={`${styles.collectionItem} ${styles.viewItem} ${v.name === activeCollection ? styles.collectionActive : ''}`}

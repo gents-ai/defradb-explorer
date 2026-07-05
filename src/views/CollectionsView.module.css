@@ -106,6 +106,136 @@
   gap: 8px;
 }
 
+.collectionPickerWrap {
+  position: relative;
+}
+
+.collectionPickerTrigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.collectionPickerChevron {
+  color: var(--gray-500);
+  transition: transform 0.15s, color 0.15s;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.collectionPickerTrigger:hover .collectionPickerChevron {
+  color: var(--gray-300);
+}
+
+.collectionPickerChevronOpen {
+  transform: rotate(180deg);
+}
+
+.collectionPickerBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 199;
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.collectionPickerDropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 200;
+  background: var(--obsidian);
+  border: 1px solid var(--dark-border-2);
+  border-radius: 8px;
+  padding: 6px;
+  width: 300px;
+  max-height: 360px;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.7);
+}
+
+.collectionPickerSearch {
+  width: 100%;
+  padding: 6px 10px;
+  margin-bottom: 4px;
+  background: var(--dark-surface);
+  border: 1px solid var(--dark-border-2);
+  border-radius: 5px;
+  font-size: 12px;
+  color: var(--gray-300);
+  outline: none;
+  flex-shrink: 0;
+}
+
+.collectionPickerSearch::placeholder {
+  color: var(--gray-600);
+}
+
+.collectionPickerSearch:focus {
+  border-color: var(--defradb-border);
+}
+
+.collectionPickerList {
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.collectionPickerItem {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 6px 10px;
+  background: none;
+  border: none;
+  border-radius: 4px;
+  font-size: 13px;
+  color: var(--gray-400);
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 0;
+}
+
+.collectionPickerItem:hover {
+  background: var(--dark-border);
+  color: var(--gray-300);
+}
+
+.collectionPickerItemActive {
+  color: var(--defradb);
+}
+
+.collectionPickerGroup {
+  display: block;
+  padding: 6px 10px 3px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--gray-600);
+  border-top: 1px solid var(--dark-border-2);
+  margin-top: 4px;
+}
+
+.collectionPickerGroup:first-child {
+  border-top: none;
+  margin-top: 0;
+}
+
+.collectionPickerEmpty {
+  padding: 8px 10px;
+  font-size: 12px;
+  color: var(--gray-600);
+}
+
 .branchBadge {
   display: inline-flex;
   align-items: center;

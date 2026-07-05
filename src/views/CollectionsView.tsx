@@ -108,6 +108,7 @@ interface Props {
   onCollectionInvalid?:    () => void
   onOpenInQueryRunner?:    (query: string) => void
   onViewCommitGraph?:      (docID: string) => void
+  onSelectCollection?:     (name: string) => void
 }
 
 export interface CollectionBrowserHandle {
@@ -116,7 +117,7 @@ export interface CollectionBrowserHandle {
   openDoc:    (docID: string) => void
 }
 
-const CollectionsView = forwardRef<CollectionsViewHandle, Props>(function CollectionsView({ collection, onViewSchema, onCollectionInvalid, onOpenInQueryRunner }, ref) {
+const CollectionsView = forwardRef<CollectionsViewHandle, Props>(function CollectionsView({ collection, onViewSchema, onCollectionInvalid, onOpenInQueryRunner, onSelectCollection }, ref) {
   const { data: collections } = useCollections()
   const { data: views } = useViews()
   const browserRef = useRef<CollectionBrowserHandle>(null)
@@ -158,6 +159,7 @@ const CollectionsView = forwardRef<CollectionsViewHandle, Props>(function Collec
       collection={effectiveCollection}
       onViewSchema={onViewSchema}
       onOpenInQueryRunner={onOpenInQueryRunner}
+      onSelectCollection={onSelectCollection}
     />
   )
 })
@@ -166,7 +168,7 @@ export default CollectionsView
 
 // ── Browser ───────────────────────────────────────────────────────────────────
 
-const CollectionBrowser = forwardRef<CollectionBrowserHandle, { collection: string; onViewSchema?: (name: string) => void; onOpenInQueryRunner?: (query: string) => void }>(function CollectionBrowser({ collection, onViewSchema, onOpenInQueryRunner }, ref) {
+const CollectionBrowser = forwardRef<CollectionBrowserHandle, { collection: string; onViewSchema?: (name: string) => void; onOpenInQueryRunner?: (query: string) => void; onSelectCollection?: (name: string) => void }>(function CollectionBrowser({ collection, onViewSchema, onOpenInQueryRunner, onSelectCollection }, ref) {
   const pageSize    = useUIStore(s => s.collectionsPageSize)
   const setPageSize = useUIStore(s => s.setCollectionsPageSize)
   const [page, setPage]           = useState(1)
@@ -195,6 +197,8 @@ const CollectionBrowser = forwardRef<CollectionBrowserHandle, { collection: stri
   const { data: views } = useViews()
   const collectionMeta = collections?.find(c => c.name === collection)
   const viewMeta = views?.find(v => v.name === collection)
+  const collectionNames = useMemo(() => (collections ?? []).map(c => c.name).sort((a, b) => a.localeCompare(b)), [collections])
+  const viewNamesList   = useMemo(() => (views ?? []).map(v => v.name).sort((a, b) => a.localeCompare(b)), [views])
   const refreshMut = useRefreshView()
 
   // Relation object fields (e.g. "author") need { _docID } sub-selection in GraphQL.
@@ -421,6 +425,9 @@ const CollectionBrowser = forwardRef<CollectionBrowserHandle, { collection: stri
     <div className={styles.view}>
       <StatsRow
         collection={collection}
+        collectionNames={collectionNames}
+        viewNames={viewNamesList}
+        onSelectCollection={onSelectCollection}
         count={totalCount}
         fieldCount={displayFields.length}
         isBranchable={collectionMeta?.is_branchable ?? false}
@@ -639,8 +646,9 @@ function IndexesBar({ collection }: { collection: string }) {
 
 // ── Stats row ─────────────────────────────────────────────────────────────────
 
-function StatsRow({ collection, count, fieldCount, isBranchable, isView, isMaterialized, onViewSchema, onRefreshView, refreshPending, onExport, onNewDocument }: {
-  collection: string; count: number; fieldCount: number; isBranchable?: boolean
+function StatsRow({ collection, collectionNames, viewNames: viewNameList, onSelectCollection, count, fieldCount, isBranchable, isView, isMaterialized, onViewSchema, onRefreshView, refreshPending, onExport, onNewDocument }: {
+  collection: string; collectionNames: string[]; viewNames: string[]; onSelectCollection?: (name: string) => void
+  count: number; fieldCount: number; isBranchable?: boolean
   isView?: boolean; isMaterialized?: boolean
   onViewSchema?: (name: string) => void
   onRefreshView?: () => void
@@ -648,11 +656,81 @@ function StatsRow({ collection, count, fieldCount, isBranchable, isView, isMater
   onExport?: () => void
   onNewDocument?: () => void
 }) {
+  const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState('')
+  const searchRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (!open) { setQuery(''); return }
+    setTimeout(() => searchRef.current?.focus(), 0)
+  }, [open])
+
+  const allNames = [...collectionNames, ...viewNameList]
+  const match = (n: string) => n.toLowerCase().includes(query.toLowerCase())
+  const filteredCollections = query ? collectionNames.filter(match) : collectionNames
+  const filteredViews       = query ? viewNameList.filter(match)       : viewNameList
+
   return (
     <div className={styles.statsRow}>
       <div className={styles.statsMain}>
         <div className={styles.statsTitleRow}>
-          <h1 className={styles.statsCollection}>{collection}</h1>
+          {allNames.length > 1 ? (
+            <div className={styles.collectionPickerWrap}>
+              <button
+                className={styles.collectionPickerTrigger}
+                onClick={() => setOpen(v => !v)}
+                aria-label="Switch collection"
+              >
+                <span className={styles.statsCollection}>{collection}</span>
+                <ChevronDown size={13} className={`${styles.collectionPickerChevron} ${open ? styles.collectionPickerChevronOpen : ''}`} />
+              </button>
+              {open && (
+                <>
+                <div className={styles.collectionPickerBackdrop} onClick={() => setOpen(false)} />
+                <div className={styles.collectionPickerDropdown}>
+                  <input
+                    ref={searchRef}
+                    className={styles.collectionPickerSearch}
+                    placeholder="Filter…"
+                    value={query}
+                    onChange={e => setQuery(e.target.value)}
+                  />
+                  <div className={styles.collectionPickerList}>
+                    {filteredCollections.length === 0 && filteredViews.length === 0 && (
+                      <span className={styles.collectionPickerEmpty}>No matches</span>
+                    )}
+                    {filteredCollections.length > 0 && (
+                      <>
+                        <span className={styles.collectionPickerGroup}>Collections</span>
+                        {filteredCollections.map(name => (
+                          <button
+                            key={name}
+                            className={`${styles.collectionPickerItem} ${name === collection ? styles.collectionPickerItemActive : ''}`}
+                            onClick={() => { onSelectCollection?.(name); setOpen(false) }}
+                          >{name}</button>
+                        ))}
+                      </>
+                    )}
+                    {filteredViews.length > 0 && (
+                      <>
+                        <span className={styles.collectionPickerGroup}>Views</span>
+                        {filteredViews.map(name => (
+                          <button
+                            key={name}
+                            className={`${styles.collectionPickerItem} ${name === collection ? styles.collectionPickerItemActive : ''}`}
+                            onClick={() => { onSelectCollection?.(name); setOpen(false) }}
+                          >{name}</button>
+                        ))}
+                      </>
+                    )}
+                  </div>
+                </div>
+                </>
+              )}
+            </div>
+          ) : (
+            <h1 className={styles.statsCollection}>{collection}</h1>
+          )}
           {isBranchable && (
             <span className={styles.branchBadge} title="This collection tracks verifiable collection-level history">
               <GitBranch size={10} />
