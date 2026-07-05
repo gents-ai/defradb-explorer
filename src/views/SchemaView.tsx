@@ -105,6 +105,15 @@ const SchemaView = forwardRef<SchemaViewHandle>(function SchemaView(_, ref) {
     return data?.__schema.types.find(t => t.name === name) ?? null
   }, [data, activeType, userTypes])
 
+  // Correct stale URL: if the stored type doesn't exist in the loaded schema,
+  // reset to the first available type so the URL stays in sync with what's shown.
+  useEffect(() => {
+    if (!data || !activeType) return
+    if (!navigableTypeNames.has(activeType)) {
+      setActiveType(userTypes[0]?.name ?? null)
+    }
+  }, [data, activeType, navigableTypeNames, userTypes, setActiveType])
+
   const sdl = useMemo(() => {
     if (!selected?.fields) return ''
     const lines = selected.fields.map(f => {
