@@ -107,7 +107,6 @@ interface Props {
   onViewSchema?:           (name: string) => void
   onCollectionInvalid?:    () => void
   onOpenInQueryRunner?:    (query: string) => void
-  onViewCommitGraph?:      (docID: string) => void
 }
 
 export interface CollectionBrowserHandle {
