@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { useHealthCheck } from '../hooks/useHealthCheck'
 import { useConfig } from '../context/ConfigContext'
 import styles from './ConnectionBadge.module.css'
@@ -14,21 +15,23 @@ export default function ConnectionBadge({ onOpenSettings }: Props) {
     : isError || healthy === false               ? 'disconnected'
     : 'connected'
 
-  const label = {
-    checking:     'Connecting…',
-    connected:    'Connected',
-    disconnected: 'Disconnected',
-  }[state]
+  let host: string
+  try { host = new URL(config.baseUrl).host } catch { host = config.baseUrl }
 
-  const host = (() => {
-    try { return new URL(config.baseUrl).host } catch { return config.baseUrl }
-  })()
+  useEffect(() => {
+    document.title = host ? `DefraDB · ${host}` : 'DefraDB'
+    return () => { document.title = 'DefraDB' }
+  }, [host])
 
   return (
     <button className={`${styles.badge} ${styles[state]}`} onClick={onOpenSettings} title="Connection settings">
       <span className={styles.dot} />
-      <span className={styles.label}>{label}</span>
       <span className={styles.host}>{host}</span>
+      {state !== 'connected' && (
+        <span className={styles.label}>
+          {state === 'checking' ? 'Connecting…' : 'Disconnected'}
+        </span>
+      )}
     </button>
   )
 }

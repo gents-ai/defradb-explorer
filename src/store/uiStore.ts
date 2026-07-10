@@ -1,20 +1,17 @@
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
+import { persist, createJSONStorage } from 'zustand/middleware'
 import type { Tab } from '../types'
 
 type SchemaSubView = 'table' | 'graph' | 'sdl' | 'editor' | 'create-view'
 type SchemaEditorMode = 'create' | 'patch'
 
 interface UIState {
-  // Top-level navigation
   activeTab: Tab
   setActiveTab: (tab: Tab) => void
 
-  // Active collection (persisted so the last-open collection survives reload)
   activeCollection: string | null
   setActiveCollection: (name: string | null) => void
 
-  // Schema view
   schemaSubView: SchemaSubView
   setSchemaSubView: (v: SchemaSubView) => void
   schemaEditorMode: SchemaEditorMode
@@ -22,43 +19,11 @@ interface UIState {
   selectedSchemaType: string | null
   setSelectedSchemaType: (name: string | null) => void
 
-  // Commits view
   commitsDocID: string | null
   setCommitsDocID: (id: string | null) => void
   commitsViewMode: 'list' | 'graph'
   setCommitsViewMode: (m: 'list' | 'graph') => void
 
-  // Collections view preferences
-  collectionsPageSize: number
-  setCollectionsPageSize: (n: number) => void
-
-  // Query view layout preferences
-  queryShowSchema: boolean
-  setQueryShowSchema: (v: boolean) => void
-  queryVarsOpen: boolean
-  setQueryVarsOpen: (v: boolean) => void
-  queryVarsHeight: number
-  setQueryVarsHeight: (h: number) => void
-  querySchemaWidth: number
-  setQuerySchemaWidth: (w: number) => void
-
-  // Resizable panel widths/heights
-  schemaGuideWidth: number
-  setSchemaGuideWidth: (w: number) => void
-  schemaSidebarWidth: number
-  setSchemaSidebarWidth: (w: number) => void
-  viewGuideWidth: number
-  setViewGuideWidth: (w: number) => void
-  viewsSidebarWidth: number
-  setViewsSidebarWidth: (w: number) => void
-  schemaEditorPreviewHeight: number
-  setSchemaEditorPreviewHeight: (h: number) => void
-  viewSdlHeight: number
-  setViewSdlHeight: (h: number) => void
-  collectionsDetailWidth: number
-  setCollectionsDetailWidth: (w: number) => void
-
-  // Draft inputs — persisted so navigating away doesn't lose work
   viewDraftSdl: string
   setViewDraftSdl: (v: string) => void
   viewDraftQuery: string
@@ -68,6 +33,20 @@ interface UIState {
   schemaEditorDraftPatch: string
   setSchemaEditorDraftPatch: (v: string) => void
 }
+
+// Connection-keyed storage — set before first use and on every connection switch
+let _connId = ''
+
+export function activateConnection(id: string) {
+  _connId = id
+  if (id) useUIStore.persist.rehydrate()
+}
+
+const connStorage = createJSONStorage(() => ({
+  getItem:    (k: string) => localStorage.getItem(`defradb:conn:${_connId}:${k}`),
+  setItem:    (k: string, v: string) => { if (_connId) localStorage.setItem(`defradb:conn:${_connId}:${k}`, v) },
+  removeItem: (k: string) => localStorage.removeItem(`defradb:conn:${_connId}:${k}`),
+}))
 
 const VALID_TABS = new Set<Tab>(['dashboard', 'collections', 'query', 'schema', 'peers', 'commits'])
 const VALID_SCHEMA_SUB: Set<SchemaSubView> = new Set(['table', 'graph', 'sdl', 'editor', 'create-view'])
@@ -93,33 +72,6 @@ export const useUIStore = create<UIState>()(
       commitsViewMode: 'graph',
       setCommitsViewMode: (m) => set({ commitsViewMode: m }),
 
-      collectionsPageSize: 20,
-      setCollectionsPageSize: (n) => set({ collectionsPageSize: n }),
-
-      queryShowSchema: true,
-      setQueryShowSchema: (v) => set({ queryShowSchema: v }),
-      queryVarsOpen: false,
-      setQueryVarsOpen: (v) => set({ queryVarsOpen: v }),
-      queryVarsHeight: 120,
-      setQueryVarsHeight: (h) => set({ queryVarsHeight: h }),
-      querySchemaWidth: 320,
-      setQuerySchemaWidth: (w) => set({ querySchemaWidth: w }),
-
-      schemaGuideWidth: 400,
-      setSchemaGuideWidth: (w) => set({ schemaGuideWidth: w }),
-      schemaSidebarWidth: 280,
-      setSchemaSidebarWidth: (w) => set({ schemaSidebarWidth: w }),
-      viewGuideWidth: 400,
-      setViewGuideWidth: (w) => set({ viewGuideWidth: w }),
-      viewsSidebarWidth: 220,
-      setViewsSidebarWidth: (w) => set({ viewsSidebarWidth: w }),
-      schemaEditorPreviewHeight: 260,
-      setSchemaEditorPreviewHeight: (h) => set({ schemaEditorPreviewHeight: h }),
-      viewSdlHeight: 220,
-      setViewSdlHeight: (h) => set({ viewSdlHeight: h }),
-      collectionsDetailWidth: 0,
-      setCollectionsDetailWidth: (w) => set({ collectionsDetailWidth: w }),
-
       viewDraftSdl: '',
       setViewDraftSdl: (v) => set({ viewDraftSdl: v }),
       viewDraftQuery: '',
@@ -130,31 +82,20 @@ export const useUIStore = create<UIState>()(
       setSchemaEditorDraftPatch: (v) => set({ schemaEditorDraftPatch: v }),
     }),
     {
-      name: 'defradb:ui',
+      name: 'session',
+      storage: connStorage,
       partialize: (state) => ({
-        activeTab:                    VALID_TABS.has(state.activeTab) ? state.activeTab : 'dashboard',
-        activeCollection:             state.activeCollection,
-        schemaSubView:                VALID_SCHEMA_SUB.has(state.schemaSubView) ? state.schemaSubView : 'table',
-        schemaEditorMode:             state.schemaEditorMode === 'patch' ? 'patch' : 'create',
-        selectedSchemaType:           state.selectedSchemaType,
-        commitsDocID:                 state.commitsDocID,
-        commitsViewMode:              state.commitsViewMode,
-        collectionsPageSize:          state.collectionsPageSize,
-        queryShowSchema:              state.queryShowSchema,
-        queryVarsOpen:                state.queryVarsOpen,
-        queryVarsHeight:              state.queryVarsHeight,
-        querySchemaWidth:             state.querySchemaWidth,
-        schemaGuideWidth:             state.schemaGuideWidth,
-        schemaSidebarWidth:           state.schemaSidebarWidth,
-        viewGuideWidth:               state.viewGuideWidth,
-        viewsSidebarWidth:            state.viewsSidebarWidth,
-        schemaEditorPreviewHeight:    state.schemaEditorPreviewHeight,
-        viewSdlHeight:                state.viewSdlHeight,
-        collectionsDetailWidth:       state.collectionsDetailWidth,
-        viewDraftSdl:                 state.viewDraftSdl,
-        viewDraftQuery:               state.viewDraftQuery,
-        schemaEditorDraftCreate:      state.schemaEditorDraftCreate,
-        schemaEditorDraftPatch:       state.schemaEditorDraftPatch,
+        activeTab:                VALID_TABS.has(state.activeTab) ? state.activeTab : 'dashboard',
+        activeCollection:         state.activeCollection,
+        schemaSubView:            VALID_SCHEMA_SUB.has(state.schemaSubView) ? state.schemaSubView : 'table',
+        schemaEditorMode:         state.schemaEditorMode === 'patch' ? 'patch' : 'create',
+        selectedSchemaType:       state.selectedSchemaType,
+        commitsDocID:             state.commitsDocID,
+        commitsViewMode:          state.commitsViewMode,
+        viewDraftSdl:             state.viewDraftSdl,
+        viewDraftQuery:           state.viewDraftQuery,
+        schemaEditorDraftCreate:  state.schemaEditorDraftCreate,
+        schemaEditorDraftPatch:   state.schemaEditorDraftPatch,
       }),
     },
   ),

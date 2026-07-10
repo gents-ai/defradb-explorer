@@ -18,6 +18,7 @@ import { useConfig } from '../context/ConfigContext'
 import { useGraphQLSchema } from '../hooks/useGraphQLSchema'
 import ResizeHandle from '../components/ResizeHandle'
 import { useUIStore } from '../store/uiStore'
+import { usePreferencesStore } from '../store/preferencesStore'
 import { highlightRefCode } from '../lib/sdl'
 import { sdlDirectiveAndTypeCompletionSource, sdlFieldSource } from '../lib/sdlComplete'
 import { sdlFieldNameHighlighter } from '../lib/sdlFieldDecorator'
@@ -203,10 +204,10 @@ export function CreateViewForm({ onDone }: { onDone: () => void }) {
   const setViewDraftSdl    = useUIStore(s => s.setViewDraftSdl)
   const viewDraftQuery     = useUIStore(s => s.viewDraftQuery)
   const setViewDraftQuery  = useUIStore(s => s.setViewDraftQuery)
-  const viewGuideWidth     = useUIStore(s => s.viewGuideWidth)
-  const setViewGuideWidth  = useUIStore(s => s.setViewGuideWidth)
-  const sdlHeight          = useUIStore(s => s.viewSdlHeight)
-  const setViewSdlHeight   = useUIStore(s => s.setViewSdlHeight)
+  const viewGuideWidth     = usePreferencesStore(s => s.viewGuideWidth)
+  const setViewGuideWidth  = usePreferencesStore(s => s.setViewGuideWidth)
+  const sdlHeight          = usePreferencesStore(s => s.viewSdlHeight)
+  const setViewSdlHeight   = usePreferencesStore(s => s.setViewSdlHeight)
 
   const [sdl, setSdlRaw]        = useState(viewDraftSdl)
   const [query, setQueryRaw]    = useState(viewDraftQuery)
@@ -701,8 +702,8 @@ const ViewsView = forwardRef<ViewsViewHandle>(function ViewsView(_, ref) {
   const { data: views = [], isLoading } = useViews()
   const [selectedName, setSelectedName] = useState<string | null>(null)
   const [showCreate, setShowCreate]     = useState(false)
-  const sidebarWidth    = useUIStore(s => s.viewsSidebarWidth)
-  const setSidebarWidth = useUIStore(s => s.setViewsSidebarWidth)
+  const sidebarWidth    = usePreferencesStore(s => s.viewsSidebarWidth)
+  const setSidebarWidth = usePreferencesStore(s => s.setViewsSidebarWidth)
 
   useImperativeHandle(ref, () => ({
     openCreate: () => setShowCreate(true),

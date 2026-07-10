@@ -17,6 +17,7 @@ import type { CollectionDescription } from '../api/types'
 import type { IntrospectionType } from '../api/types'
 import ResizeHandle from './ResizeHandle'
 import { useUIStore } from '../store/uiStore'
+import { usePreferencesStore } from '../store/preferencesStore'
 import { highlightRefCode, highlightJson } from '../lib/sdl'
 import { makeSdlCompletion, DIRECTIVES_CREATE, DIRECTIVES_PATCH } from '../lib/sdlComplete'
 import { sdlFieldNameHighlighter } from '../lib/sdlFieldDecorator'
@@ -232,10 +233,10 @@ export default function SchemaEditor({ onDone, initialMode = 'create' }: Props) 
   const { config }    = useConfig()
   const queryClient   = useQueryClient()
   const storeMode                  = useUIStore(s => s.schemaEditorMode)
-  const schemaGuideWidth              = useUIStore(s => s.schemaGuideWidth)
-  const setSchemaGuideWidth           = useUIStore(s => s.setSchemaGuideWidth)
-  const schemaEditorPreviewHeight     = useUIStore(s => s.schemaEditorPreviewHeight)
-  const setSchemaEditorPreviewHeight  = useUIStore(s => s.setSchemaEditorPreviewHeight)
+  const schemaGuideWidth              = usePreferencesStore(s => s.schemaGuideWidth)
+  const setSchemaGuideWidth           = usePreferencesStore(s => s.setSchemaGuideWidth)
+  const schemaEditorPreviewHeight     = usePreferencesStore(s => s.schemaEditorPreviewHeight)
+  const setSchemaEditorPreviewHeight  = usePreferencesStore(s => s.setSchemaEditorPreviewHeight)
   const schemaEditorDraftCreate    = useUIStore(s => s.schemaEditorDraftCreate)
   const setSchemaEditorDraftCreate = useUIStore(s => s.setSchemaEditorDraftCreate)
   const schemaEditorDraftPatch     = useUIStore(s => s.schemaEditorDraftPatch)

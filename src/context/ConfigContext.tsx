@@ -1,40 +1,26 @@
-import { createContext, useContext, useState, useEffect, type ReactNode } from 'react'
+import { createContext, useContext, useMemo, type ReactNode } from 'react'
 import type { DefraConfig } from '../api/client'
+import { useActiveConnection } from '../store/connectionStore'
 
 interface ConfigContextValue {
   config: DefraConfig
-  setConfig: (config: DefraConfig) => void
-}
-
-const STORAGE_KEY = 'defradb-config'
-
-const DEFAULT_CONFIG: DefraConfig = {
-  baseUrl: import.meta.env.VITE_DEFRADB_URL ?? 'http://localhost:9181',
-  token:   import.meta.env.VITE_DEFRADB_TOKEN ?? '',
 }
 
 const ConfigContext = createContext<ConfigContextValue | null>(null)
 
+const DEFAULT_HOST  = import.meta.env.VITE_DEFRADB_URL   ?? 'http://localhost:9181'
+const DEFAULT_TOKEN = import.meta.env.VITE_DEFRADB_TOKEN  ?? ''
+
 export function ConfigProvider({ children }: { children: ReactNode }) {
-  const [config, setConfigState] = useState<DefraConfig>(() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY)
-      return stored ? { ...DEFAULT_CONFIG, ...JSON.parse(stored) } : DEFAULT_CONFIG
-    } catch {
-      return DEFAULT_CONFIG
-    }
-  })
+  const connection = useActiveConnection()
 
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(config))
-  }, [config])
-
-  function setConfig(next: DefraConfig) {
-    setConfigState(next)
-  }
+  const config = useMemo<DefraConfig>(() => ({
+    baseUrl: connection?.host  ?? DEFAULT_HOST,
+    token:   connection?.token || undefined,
+  }), [connection?.host, connection?.token])
 
   return (
-    <ConfigContext.Provider value={{ config, setConfig }}>
+    <ConfigContext.Provider value={{ config }}>
       {children}
     </ConfigContext.Provider>
   )
@@ -45,3 +31,5 @@ export function useConfig(): ConfigContextValue {
   if (!ctx) throw new Error('useConfig must be used inside ConfigProvider')
   return ctx
 }
+
+export { DEFAULT_HOST, DEFAULT_TOKEN }

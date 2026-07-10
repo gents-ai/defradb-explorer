@@ -9,6 +9,7 @@ import SchemaGraph from '../components/SchemaGraph'
 import SchemaEditor from '../components/SchemaEditor'
 import { CreateViewForm } from './ViewsView'
 import { useUIStore } from '../store/uiStore'
+import { usePreferencesStore } from '../store/preferencesStore'
 import styles from './SchemaView.module.css'
 import { stripDescriptions, highlightSdl } from '../lib/sdl'
 
@@ -54,8 +55,8 @@ const SchemaView = forwardRef<SchemaViewHandle>(function SchemaView(_, ref) {
   const setEditorMode  = useUIStore(s => s.setSchemaEditorMode)
   const activeType     = useUIStore(s => s.selectedSchemaType)
   const setActiveType  = useUIStore(s => s.setSelectedSchemaType)
-  const sidebarWidth   = useUIStore(s => s.schemaSidebarWidth)
-  const setSidebarWidth = useUIStore(s => s.setSchemaSidebarWidth)
+  const sidebarWidth   = usePreferencesStore(s => s.schemaSidebarWidth)
+  const setSidebarWidth = usePreferencesStore(s => s.setSchemaSidebarWidth)
 
   useImperativeHandle(ref, () => ({
     openCreate:     () => { setEditorMode('create'); setViewMode('editor') },

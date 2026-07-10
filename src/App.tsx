@@ -13,9 +13,11 @@ import type { SchemaViewHandle } from './views/SchemaView'
 import PeersView from './views/PeersView'
 import CommitsView from './views/CommitsView'
 import { useUIStore } from './store/uiStore'
+import { useConnectionStore } from './store/connectionStore'
 import styles from './App.module.css'
 
 export default function App() {
+  const activeConnectionId  = useConnectionStore(s => s.activeConnectionId)
   const activeTab           = useUIStore(s => s.activeTab)
   const setActiveTab        = useUIStore(s => s.setActiveTab)
   const activeCollection    = useUIStore(s => s.activeCollection)
@@ -72,7 +74,7 @@ export default function App() {
               </div>
             )}
             {mountedTabs.has('query') && (
-              <div className={styles.tabPane} hidden={activeTab !== 'query'}><QueryView ref={queryRef} onOpenInCollections={(collection, docID) => {
+              <div className={styles.tabPane} hidden={activeTab !== 'query'}><QueryView key={activeConnectionId} ref={queryRef} onOpenInCollections={(collection, docID) => {
                 setActiveCollection(collection)
                 selectTab('collections')
                 setTimeout(() => collectionsRef.current?.openDoc(docID), 0)

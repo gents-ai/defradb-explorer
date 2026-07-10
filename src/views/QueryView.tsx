@@ -11,7 +11,8 @@ import JsonEditor from '../components/JsonEditor'
 import JsonViewer from '../components/JsonViewer'
 import SchemaExplorer from '../components/SchemaExplorer'
 import ResizeHandle from '../components/ResizeHandle'
-import { useUIStore } from '../store/uiStore'
+import { usePreferencesStore } from '../store/preferencesStore'
+import { useConnectionStore } from '../store/connectionStore'
 import styles from './QueryView.module.css'
 
 // ── Public handle ─────────────────────────────────────────────────────────────
@@ -126,28 +127,30 @@ function isSubscriptionQuery(query: string): boolean {
 
 // ── Persistence ───────────────────────────────────────────────────────────────
 
-const STORAGE_KEY = 'defradb-query-tabs-v2'
-
 type SavedState = {
   tabs: Array<{ id: string; name: string; defaultName?: string; query: string; variables: string }>
   activeTabId: string
 }
 
-function loadSaved(): SavedState | null {
+function queryTabsKey(connId: string) {
+  return `defradb:conn:${connId}:queries`
+}
+
+function loadSaved(connId: string): SavedState | null {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY)
+    const raw = localStorage.getItem(queryTabsKey(connId))
     if (!raw) return null
     return JSON.parse(raw) as SavedState
   } catch { return null }
 }
 
-function saveTabs(tabs: QueryTab[], activeTabId: string) {
+function saveTabs(connId: string, tabs: QueryTab[], activeTabId: string) {
   try {
     const saved: SavedState = {
       tabs: tabs.map(({ id, name, defaultName, query, variables }) => ({ id, name, defaultName, query, variables })),
       activeTabId,
     }
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(saved))
+    localStorage.setItem(queryTabsKey(connId), JSON.stringify(saved))
   } catch {}
 }
 
@@ -224,6 +227,10 @@ const MIN_VARS    = 60
 // ── Component ─────────────────────────────────────────────────────────────────
 
 const QueryView = forwardRef<QueryViewHandle, QueryViewProps>(function QueryView({ onOpenInCollections }, ref) {
+  // Stable for this component's lifetime — App re-keys QueryView on connection change
+  const connId    = useConnectionStore(s => s.activeConnectionId)
+  const connIdRef = useRef(connId)
+
   const { config } = useConfig()
   const schema     = useGraphQLSchema()
   const editorRef  = useRef<GraphQLEditorHandle>(null)
@@ -242,7 +249,7 @@ const QueryView = forwardRef<QueryViewHandle, QueryViewProps>(function QueryView
   // ── Tab state ──────────────────────────────────────────────────────────────
 
   const [tabs, setTabsRaw] = useState<QueryTab[]>(() => {
-    const saved = loadSaved()
+    const saved = loadSaved(connIdRef.current)
     if (saved?.tabs?.length) {
       return saved.tabs.map(t => ({ ...t, defaultName: t.defaultName ?? t.name, result: null, elapsed: null, subEvents: [], subStatus: 'idle' as SubStatus }))
     }
@@ -250,21 +257,21 @@ const QueryView = forwardRef<QueryViewHandle, QueryViewProps>(function QueryView
   })
 
   const [activeTabId, setActiveTabIdRaw] = useState<string>(() => {
-    const saved = loadSaved()
+    const saved = loadSaved(connIdRef.current)
     return saved?.activeTabId ?? tabs[0]?.id ?? ''
   })
 
   function setTabs(next: QueryTab[] | ((prev: QueryTab[]) => QueryTab[]), id?: string) {
     setTabsRaw(prev => {
       const updated = typeof next === 'function' ? next(prev) : next
-      saveTabs(updated, id ?? activeTabId)
+      saveTabs(connIdRef.current, updated, id ?? activeTabId)
       return updated
     })
   }
 
   function setActiveTabId(id: string) {
     setActiveTabIdRaw(id)
-    saveTabs(tabs, id)
+    saveTabs(connIdRef.current, tabs, id)
     setCursorOffset(null)
   }
 
@@ -318,14 +325,14 @@ const QueryView = forwardRef<QueryViewHandle, QueryViewProps>(function QueryView
 
   // ── Layout state ───────────────────────────────────────────────────────────
 
-  const showSchema    = useUIStore(s => s.queryShowSchema)
-  const setShowSchema = useUIStore(s => s.setQueryShowSchema)
-  const varsOpen      = useUIStore(s => s.queryVarsOpen)
-  const setVarsOpen   = useUIStore(s => s.setQueryVarsOpen)
-  const varsHeight    = useUIStore(s => s.queryVarsHeight)
-  const setVarsHeight = useUIStore(s => s.setQueryVarsHeight)
-  const schemaWidth   = useUIStore(s => s.querySchemaWidth)
-  const setSchemaWidth = useUIStore(s => s.setQuerySchemaWidth)
+  const showSchema    = usePreferencesStore(s => s.queryShowSchema)
+  const setShowSchema = usePreferencesStore(s => s.setQueryShowSchema)
+  const varsOpen      = usePreferencesStore(s => s.queryVarsOpen)
+  const setVarsOpen   = usePreferencesStore(s => s.setQueryVarsOpen)
+  const varsHeight    = usePreferencesStore(s => s.queryVarsHeight)
+  const setVarsHeight = usePreferencesStore(s => s.setQueryVarsHeight)
+  const schemaWidth   = usePreferencesStore(s => s.querySchemaWidth)
+  const setSchemaWidth = usePreferencesStore(s => s.setQuerySchemaWidth)
   const [editorWidth, setEditorWidth] = useState<number | null>(null)
   const [cursorOffset, setCursorOffset] = useState<number | null>(null)
   const [overflowOpen, setOverflowOpen] = useState(false)

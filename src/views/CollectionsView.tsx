@@ -15,7 +15,7 @@ import { validateValues } from '../hooks/useDocumentMutations'
 import type { FormValues, TypeMap } from '../hooks/useDocumentMutations'
 import { useDocumentCommits } from '../hooks/useCommits'
 import { useCollectionIndexes } from '../hooks/useCollectionIndexes'
-import { useUIStore } from '../store/uiStore'
+import { usePreferencesStore } from '../store/preferencesStore'
 import { useConfig } from '../context/ConfigContext'
 import styles from './CollectionsView.module.css'
 
@@ -166,8 +166,8 @@ export default CollectionsView
 // ── Browser ───────────────────────────────────────────────────────────────────
 
 const CollectionBrowser = forwardRef<CollectionBrowserHandle, { collection: string; onViewSchema?: (name: string) => void; onOpenInQueryRunner?: (query: string) => void }>(function CollectionBrowser({ collection, onViewSchema, onOpenInQueryRunner }, ref) {
-  const pageSize    = useUIStore(s => s.collectionsPageSize)
-  const setPageSize = useUIStore(s => s.setCollectionsPageSize)
+  const pageSize    = usePreferencesStore(s => s.collectionsPageSize)
+  const setPageSize = usePreferencesStore(s => s.setCollectionsPageSize)
   const [page, setPage]           = useState(1)
   const [filter, setFilter]       = useState('')
   const [searchField, setSearchField] = useState('_docID')
@@ -350,8 +350,8 @@ const CollectionBrowser = forwardRef<CollectionBrowserHandle, { collection: stri
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null)
   const [showNewDoc, setShowNewDoc]   = useState(false)
   const [toast, setToast]             = useState<string | null>(null)
-  const storedDetailWidth    = useUIStore(s => s.collectionsDetailWidth)
-  const setStoredDetailWidth = useUIStore(s => s.setCollectionsDetailWidth)
+  const storedDetailWidth    = usePreferencesStore(s => s.collectionsDetailWidth)
+  const setStoredDetailWidth = usePreferencesStore(s => s.setCollectionsDetailWidth)
   const detailWidth    = storedDetailWidth || Math.round(window.innerWidth / 2)
   const setDetailWidth = setStoredDetailWidth
 
