@@ -9,7 +9,7 @@ export default function Topbar({ onOpenSettings }: Props) {
   return (
     <header className={styles.topbar}>
       <a href="#" className={styles.logo} aria-label="DefraDB">
-        <img src="/defradb-logo-white.svg" height={20} alt="DefraDB" />
+        <img src={`${import.meta.env.BASE_URL}defradb-logo-white.svg`} height={20} alt="DefraDB" />
         <span className={styles.fallback}>DefraDB</span>
       </a>
 

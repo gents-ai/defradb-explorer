@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { useHealthCheck } from '../hooks/useHealthCheck'
 import { useConfig } from '../context/ConfigContext'
+import { EMBEDDED } from '../lib/embedded'
 import styles from './ConnectionBadge.module.css'
 
 interface Props {
@@ -23,8 +24,8 @@ export default function ConnectionBadge({ onOpenSettings }: Props) {
     return () => { document.title = 'DefraDB' }
   }, [host])
 
-  return (
-    <button className={`${styles.badge} ${styles[state]}`} onClick={onOpenSettings} title="Connection settings">
+  const contents = (
+    <>
       <span className={styles.dot} />
       <span className={styles.host}>{host}</span>
       {state !== 'connected' && (
@@ -32,6 +33,18 @@ export default function ConnectionBadge({ onOpenSettings }: Props) {
           {state === 'checking' ? 'Connecting…' : 'Disconnected'}
         </span>
       )}
+    </>
+  )
+
+  // Embedded builds are pinned to the serving node; there are no connection
+  // settings to open, so the badge is purely informational.
+  if (EMBEDDED) {
+    return <span className={`${styles.badge} ${styles[state]}`}>{contents}</span>
+  }
+
+  return (
+    <button className={`${styles.badge} ${styles[state]}`} onClick={onOpenSettings} title="Connection settings">
+      {contents}
     </button>
   )
 }

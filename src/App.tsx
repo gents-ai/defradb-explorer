@@ -14,6 +14,7 @@ import PeersView from './views/PeersView'
 import CommitsView from './views/CommitsView'
 import { useUIStore } from './store/uiStore'
 import { useConnectionStore } from './store/connectionStore'
+import { EMBEDDED } from './lib/embedded'
 import styles from './App.module.css'
 
 export default function App() {
@@ -100,7 +101,7 @@ export default function App() {
         </main>
       </div>
 
-      {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
+      {settingsOpen && !EMBEDDED && <SettingsModal onClose={() => setSettingsOpen(false)} />}
     </div>
   )
 }
